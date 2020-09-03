@@ -1,0 +1,5 @@
+".\output\main.obj",
+".\output\SI24R1.obj",
+".\output\delay.obj" 
+TO ".\output\SI24R1" 
+PRINT(".\listing\SI24R1.m51") RAMSIZE(256) 

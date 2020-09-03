@@ -1,0 +1,4 @@
+/mnt/hgfs/ubuntushare/nrf24l01_4418n/app/build/CMakeFiles/rebuild_cache.dir
+/mnt/hgfs/ubuntushare/nrf24l01_4418n/app/build/CMakeFiles/edit_cache.dir
+/mnt/hgfs/ubuntushare/nrf24l01_4418n/app/build/CMakeFiles/nrf_rx.dir
+/mnt/hgfs/ubuntushare/nrf24l01_4418n/app/build/CMakeFiles/nrf_tx.dir

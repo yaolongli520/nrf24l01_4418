@@ -1,0 +1,1 @@
+/opt/FriendlyARM/toolchain/4.9.3/bin/arm-linux-g++      CMakeFiles/nrf_server.dir/src/nrf24l01.cpp.o CMakeFiles/nrf_server.dir/src/list.cpp.o CMakeFiles/nrf_server.dir/src/mytime.cpp.o CMakeFiles/nrf_server.dir/src/pack.cpp.o CMakeFiles/nrf_server.dir/src/nrf_server.cpp.o  -o ../bin/nrf_server 

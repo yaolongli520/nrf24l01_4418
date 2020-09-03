@@ -1,0 +1,3 @@
+kernel//mnt/hgfs/ubuntushare/nrf24l01_4418n/driver/nrf24l01.ko
+kernel//mnt/hgfs/ubuntushare/nrf24l01_4418n/driver/nrf24l01_dev.ko
+kernel//mnt/hgfs/ubuntushare/nrf24l01_4418n/driver/test_work.ko

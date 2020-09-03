@@ -1,0 +1,1 @@
+cmd_/mnt/hgfs/ubuntushare/nrf24l01_4418n/driver/nrf24l01.ko := arm-linux-ld -EL -r  -T /root/linux-3.4.y/scripts/module-common.lds --build-id  -o /mnt/hgfs/ubuntushare/nrf24l01_4418n/driver/nrf24l01.ko /mnt/hgfs/ubuntushare/nrf24l01_4418n/driver/nrf24l01.o /mnt/hgfs/ubuntushare/nrf24l01_4418n/driver/nrf24l01.mod.o

@@ -1,0 +1,1 @@
+/opt/FriendlyARM/toolchain/4.9.3/bin/arm-linux-gcc      CMakeFiles/nrf_tx.dir/src/nrf24l01.c.o CMakeFiles/nrf_tx.dir/src/list.c.o CMakeFiles/nrf_tx.dir/src/nrf_tx.c.o  -o ../bin/nrf_tx -rdynamic 
