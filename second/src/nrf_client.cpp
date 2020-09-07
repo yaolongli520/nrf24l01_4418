@@ -20,6 +20,15 @@ using namespace std;
 
 static nrf_client ops;
 
+void print_hex(u8 *buf,int len)
+{
+	int i = 0;
+	for(i = 0; i< len ;i++)
+	{
+		printf("buf[%d]:%02x \n",i,buf[i]);
+	}
+	printf("\n");
+}
 
 
 #if 0
@@ -202,23 +211,8 @@ void set_par_test(char *argv[])
 	cmd.data32[0] = atoi(argv[3]);
 	ops.nrf_transfer_cmd(cmd);
 }
-
-/*获取参数 测试*/
-void get_par_test(char *argv[])
-{
-	struct nrf_cmd cmd ={
-	.option = FLAG_SEND_GETPAR,
-	.noption = 0,
-	.flag =  FLAG_REPLY,
-	.nflag = 0,
-	.udelay = 6000,
-	.index	= (u32)atoi(argv[2]),
-	};
-	
-	ops.nrf_transfer_cmd(cmd);
-	printf("get par = %u \n",cmd.data32[0]);
-}
 #endif
+
 
 
 /*
@@ -311,6 +305,9 @@ int nrf_snd_cmd(void *data)
 	ret = nrf_write_then_read(data,400*T_MSEC);
 	return ret;
 }
+
+
+
 
 /**
  * nrf_cli_get_req - 从服务器获取漏发请求
@@ -503,6 +500,39 @@ void show_loss_test(void)
 
 
 
+
+/*获取参数 测试*/
+int get_par_test(u32 index)
+{
+	int ret = 0;
+	u32 val = 0;
+	struct nrf_pack pack;
+	struct get_par_str *cur_par = (struct get_par_str *)pack.data;
+
+	
+	pack.type = TYPE_CMD;
+	pack.len  = 0;
+	pack.num  = CMD_GETPAR;
+	pack.check = (~pack.type & 0x3);
+
+	memset(pack.data,0,EACH_LEN_MAX);
+	
+	cur_par->index = index;
+
+	ret = nrf_snd_cmd(&pack);
+	if(ret) {
+		cout <<"get par "<<index <<"fail"<<endl;
+		return ret;
+	}
+	
+	memcpy(&val,cur_par->data,sizeof(val));
+	printf("get par[%u] = %u \n",index,val);
+
+	return ERR_NONE;
+
+}
+
+
 int main(int argc,char *argv[])
 {
 	int ret;
@@ -529,7 +559,7 @@ int main(int argc,char *argv[])
 	}
 
 	if(!strcmp(argv[1],"get")){
-	//	get_par_test(argv);
+		get_par_test(atoi(argv[2]));
 	}
 	else if(!strcmp(argv[1],"set")){
 	//	set_par_test(argv);

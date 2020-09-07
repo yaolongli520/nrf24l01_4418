@@ -19,41 +19,33 @@
 using namespace std;
 static nrf_server ops;
 
-/*服务器代码*/
+/*服务器参数*/
 static u32 par[20] = {
 0,1,2,3,4,5,6,7,8,9,10,
 11,12,13,14,15,16,17,18,19
 };
 
-#define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
-
-#if 0
-int index_to_data(u32 index,struct nrf_cmd &cmd)
+int index_to_data(u32 index,u8 *data)
 {
 	if(index > ARRAY_SIZE(par) - 1) {
-		cmd.data32[0] = 0xffff;
+		memset(data,0xff,4);
 		return -1;
 	}
-	cmd.data32[0] = par[index];	
+	memcpy(data,&par[index],sizeof(par[index]));
 	return 0;
 }
 
+
+
+
+
+
+#if 0
 int nrf_server::nrf_transfer_setpar(struct nrf_cmd &cmd)
 {
 	u32 index;
 	index = cmd.index;
 	par[index] = cmd.data32[0];
-	return 0;
-}
-
-int nrf_server::nrf_transfer_getpar(struct nrf_cmd &cmd)
-{
-	int index;
-	int	ret;
-	index = cmd.index; /* 获取索引 */
-	index_to_data(index,cmd);
-	usleep(cmd.udelay);
-	ret = nrf24l01_tx((u8 *)&cmd,sizeof(cmd));
 	return 0;
 }
 
@@ -89,16 +81,6 @@ retry:
 	
 }
 
-
-void print_hex(u8 *buf,int len)
-{
-	int i = 0;
-	for(i = 0; i< len ;i++)
-	{
-		printf("buf[%d]:%02x ",i,buf[i]);
-	}
-	printf("\n");
-}
 
 
 
@@ -276,6 +258,36 @@ int  send_loss_pack_to_client(void)
 }
 
 
+
+void print_hex(u8 *buf,int len)
+{
+	int i = 0;
+	for(i = 0; i< len ;i++)
+	{
+		printf("buf[%d]:%02x \n",i,buf[i]);
+	}
+	printf("\n");
+}
+
+
+int nrf_transfer_getpar(void *data)
+{
+	int	ret;
+	u32 val = 0;
+	struct nrf_pack *pack = NULL;
+	pack = (typeof (pack)) data;
+	struct get_par_str *cur_par = (struct get_par_str *)pack->data;
+	int index = cur_par->index;
+
+	ret = index_to_data(index,cur_par->data);
+	
+	if(ret) 
+		cout << "index =" <<index <<"no find "<<endl;
+	memcpy(&val,cur_par->data,sizeof(val));
+	return 0;
+}
+
+
 /**
  * nrf_cmd_handle - 对接收到的命令进行处理和回复
  * 
@@ -294,6 +306,8 @@ int nrf_cmd_handle(void *data)
 		/* 设置并回复 */
 		break;	
 	case CMD_GETPAR: /* 获取参数 */
+		nrf_transfer_getpar(data);
+		nrf24l01_tx((u8 *)data,TRAN_LEN_MAX);
 		/* 获取参数并回复 */
 		break;
 	case CMD_GET_LOSS: /* 获取丢包 */
@@ -374,6 +388,13 @@ int nrf_data_handle(void *data)
 	return FILE_PROCESS_OK;
 }
 
+void print_err(struct nrf_pack *pack)
+{
+	printf("pack->type:0x %x\n",pack->type);
+	printf("pack->len:%d \n",pack->len);
+	printf("pack->num:%d \n",pack->num);
+	printf("pack->check:0x %x \n",pack->check);
+}
 
 /**
  * nrf_handle_pack - 对接收到的包进行处理
@@ -390,6 +411,7 @@ int nrf_server::nrf_handle_pack(void *data)
 	ret = nrf_check_type(data);
 	if(ret >= TYPE_ERR) {
 		cout <<"nrf_check_type data is fail"<<endl;
+		print_err(pack);
 		return ret;
 	}
 	
@@ -483,7 +505,7 @@ int nrf_server::recv_comp_process(void)
 		loss_pack = NULL;
 		fclose(fp);
 	}
-	printf("\b\b\b\b\b\b%5.2f%%...",100.00);
+	printf("\b\b\b\b\b\b%5.2f%%...\n",100.00);
 	fflush(stdout);	
 	recving = 0;
 	return FILE_UP_COMP;

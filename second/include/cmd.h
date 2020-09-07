@@ -36,7 +36,10 @@ enum {
 	CMD_NODEFINE, /* 未定义 */
 };
 
-
+struct get_par_str{
+	u32 index;
+	u8  data[24]; 
+};
 
 struct nrf_cmd {
 	u32 cmd_num;

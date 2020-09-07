@@ -263,7 +263,7 @@ struct nrf_pack* make_pack(u32 length)
 	/*设置小包的个数*/
 	p_len = DIV_ROUND_UP(d_len,EACH_LEN_MAX);/*多少个数据包*/
 	p_len = DIV_ROUND_UP(p_len,EACH_LEN_LOSS); /*需要多少个请求重发包*/
-	printf("length:%d p_len=%d \n",length,p_len);
+
 	pack = (struct nrf_pack *)malloc(sizeof(struct nrf_pack) * p_len);
 	if(!pack) {
 		cout <<"malloc is fail"<<__LINE__<<endl;
