@@ -7,7 +7,21 @@ struct file{
 	u8 	 data[0];
 };
 
+/*文件处理返回*/
+enum {
+	FILE_PROCESS_OK = 0,
+	FILE_ALRE_ALLOC_BUFF, /*文件缓存已分配*/
+	FILE_ALRE_ALLOC_LOSS, /*丢包缓存已分配*/
+	FILE_BUF_NODEFIDE, /* 文件缓存未定义 */
+};
 
+enum{
+	FILE_UP_COMP = 0, /*接收完成*/ 
+	FILE_UP_NULL, /*未有文件*/
+	FILE_UP_FAIL, /*接收出错*/
+	FILE_UP_RECVING, /*接收文件中 */
+	FILE_UP_SAVE_FAIL, /*保存失败*/
+};
 
 
 struct file_cmd{
@@ -20,7 +34,7 @@ struct file_cmd{
 };
 
 
-
+#if 0
 int cmd_check_file_flag(struct file_cmd cmd)
 {
 	if(cmd.flag + cmd.nflag != F_FLAG_AND) { 
@@ -69,7 +83,7 @@ void cmd_get_file_loss(struct file_cmd &cmd)
 	cmd.loss   = 0; /*这里返回丢包数*/
 	cmd.udelay	= 500;
 }
-
+#endif
 
 
 #endif

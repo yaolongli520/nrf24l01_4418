@@ -10,6 +10,8 @@
 pack.h
 ../include/pack.h
 
+../include/file.h
+
 ../include/list.h
 stdio.h
 -
@@ -32,6 +34,8 @@ system.h
 
 ../include/system.h
 iostream
+-
+unistd.h
 -
 list.h
 ../include/list.h
@@ -107,6 +111,8 @@ nrf24l01.h
 /mnt/hgfs/ubuntushare/nrf24l01_4418n/second/src/nrf24l01.h
 pack.h
 /mnt/hgfs/ubuntushare/nrf24l01_4418n/second/src/pack.h
+file.h
+/mnt/hgfs/ubuntushare/nrf24l01_4418n/second/src/file.h
 
 /mnt/hgfs/ubuntushare/nrf24l01_4418n/second/src/pack.cpp
 stdlib.h
@@ -115,4 +121,6 @@ string.h
 -
 pack.h
 /mnt/hgfs/ubuntushare/nrf24l01_4418n/second/src/pack.h
+nrf_server.h
+/mnt/hgfs/ubuntushare/nrf24l01_4418n/second/src/nrf_server.h
 

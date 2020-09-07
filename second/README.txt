@@ -33,14 +33,12 @@ CLIENT -------------> SERVICE
 1.SERVICE 未收到 CLIENT 的 CMD_FILE,自然SERVICE 不会返回 CMD_ACK
 ,400ms TX 未收到 CMD_ACK,则重新发送。
 
-2. SERVICE 收到 CMD_FILE,SERVICE 回 CMD_ACK后 ,SERVICE 等待 300ms 未收到接下来的数据,
-退回到等待命令。
 
-3. SERVICE 收到 CMD_FILE,SERVICE 回CMD_ACK ,SERVICE 等到400MS 收到 CLIENT 的再次发来 CMD_FILE
-而不是发来数据，即 SERVICE 收到2次 CLIENT 的 CMD_FILE ,进入情况2处理。
+2. SERVICE 收到 CMD_FILE,SERVICE 回CMD_ACK ,SERVICE 等到400MS 收到 CLIENT 的再次发来 CMD_FILE
+而不是发来数据，即 SERVICE 收到2次 CLIENT 的 CMD_FILE ,继续返回，但是第二次不处理。
 
-4. SERVICE 收到,SERVICE 回包比较久,导致 CLIENT 重发,导致 SERVICE 接收到两个包,
-而 CLIENT 则收到CMD_ACK,准备开始发数据,进入情况2处理。因为也是准备接收数据。
+3. SERVICE 收到,SERVICE 回包比较久,导致 CLIENT 重发,导致 SERVICE 接收到两个包,
+而 CLIENT 则收到CMD_ACK,准备开始发数据,继续返回。并不再处理准备接收数据。
 
 
 

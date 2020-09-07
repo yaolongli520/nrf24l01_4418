@@ -14,6 +14,7 @@ CMakeFiles/nrf_server.dir/src/nrf24l01.cpp.o: ../include/system.h
 CMakeFiles/nrf_server.dir/src/nrf24l01.cpp.o: ../src/nrf24l01.cpp
 
 CMakeFiles/nrf_server.dir/src/nrf_server.cpp.o: ../include/cmd.h
+CMakeFiles/nrf_server.dir/src/nrf_server.cpp.o: ../include/file.h
 CMakeFiles/nrf_server.dir/src/nrf_server.cpp.o: ../include/list.h
 CMakeFiles/nrf_server.dir/src/nrf_server.cpp.o: ../include/mytime.h
 CMakeFiles/nrf_server.dir/src/nrf_server.cpp.o: ../include/nrf24l01.h
@@ -22,8 +23,10 @@ CMakeFiles/nrf_server.dir/src/nrf_server.cpp.o: ../include/pack.h
 CMakeFiles/nrf_server.dir/src/nrf_server.cpp.o: ../include/system.h
 CMakeFiles/nrf_server.dir/src/nrf_server.cpp.o: ../src/nrf_server.cpp
 
+CMakeFiles/nrf_server.dir/src/pack.cpp.o: ../include/cmd.h
 CMakeFiles/nrf_server.dir/src/pack.cpp.o: ../include/list.h
 CMakeFiles/nrf_server.dir/src/pack.cpp.o: ../include/mytime.h
+CMakeFiles/nrf_server.dir/src/pack.cpp.o: ../include/nrf_server.h
 CMakeFiles/nrf_server.dir/src/pack.cpp.o: ../include/pack.h
 CMakeFiles/nrf_server.dir/src/pack.cpp.o: ../include/system.h
 CMakeFiles/nrf_server.dir/src/pack.cpp.o: ../src/pack.cpp

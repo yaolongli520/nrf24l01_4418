@@ -15,6 +15,7 @@ CMakeFiles/nrf_client.dir/src/nrf24l01.cpp.o
  /mnt/hgfs/ubuntushare/nrf24l01_4418n/second/src/nrf24l01.cpp
 CMakeFiles/nrf_client.dir/src/nrf_client.cpp.o
  ../include/cmd.h
+ ../include/file.h
  ../include/list.h
  ../include/mytime.h
  ../include/nrf24l01.h
@@ -23,8 +24,10 @@ CMakeFiles/nrf_client.dir/src/nrf_client.cpp.o
  ../include/system.h
  /mnt/hgfs/ubuntushare/nrf24l01_4418n/second/src/nrf_client.cpp
 CMakeFiles/nrf_client.dir/src/pack.cpp.o
+ ../include/cmd.h
  ../include/list.h
  ../include/mytime.h
+ ../include/nrf_server.h
  ../include/pack.h
  ../include/system.h
  /mnt/hgfs/ubuntushare/nrf24l01_4418n/second/src/pack.cpp

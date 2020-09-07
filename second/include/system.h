@@ -2,6 +2,8 @@
 #define __SYSTEM_H_
 
 #include <iostream>
+#include <unistd.h>
+
 #include "list.h"
 #include "mytime.h"
 
@@ -16,7 +18,7 @@ typedef  unsigned  int u32;
 #define BIT(i)  (0x1<<i)
 #define DIV_ROUND_UP(n,d) (((n) + (d) - 1) / (d)) 
 
-
+#define DEBUG_POINT() printf("%s %d \n",__func__,__LINE__)
 
 #endif
 

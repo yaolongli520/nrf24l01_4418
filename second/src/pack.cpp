@@ -1,27 +1,21 @@
 #include <stdlib.h>
 #include <string.h>
 #include "pack.h"
+#include "nrf_server.h"
+
+const char *type_name[] ={
+	"TYPE_CMD",
+	"TYPE_DATA",
+	"TYPE_REQ_DATA",
+	"TYPE_ERR",
+	"TYPE_NODEFINE",
+};
 
 
-
-
-/* n 除以 d 向上取整*/
-#define TRAN_LEN_MAX  32 /*发送单次最大字节*/
-#define EACH_LEN_MAX  28  /*每个包最多容纳数据个数*/
-#define PACK_HEAD_LEN 32 /*包头的长度*/
-#define PACK_TOTAL_LEN 32 /*数据包总长*/
-#define EACH_LEN_REQ 7  /*每个REQ包的数据个数*/
-/*数据容量转换为包占用内存容量 如:28-->32*/
-#define DATALEN_TO_PACKLEN(len) (DIV_ROUND_UP(len,EACH_LEN_MAX)*TRAN_LEN_MAX)
 
 int  if_pace_true(const struct pack_head *head,struct pack_data *data);
 
-
-
-
-
-
-
+u32 pack_sum = 0; /*数据号 每次传输自加*/
 
 void pack_module_init(void)
 {
@@ -43,11 +37,10 @@ struct nrf_pack* init_fail_pack(void)
 		.d_len = 0,
 		.pack_sum = 0,
 		.type	= HEAD_FAIL,
-		.total  = 0, 	
 	};
 	head_fail.type = TYPE_DATA;
 	head_fail.len  = 0;
-	head_fail.num  = 0;
+	head_fail.num  = CMD_HEAD_FAIL; /*命令号*/
 	head_fail.check = (~head_fail.type & 0x3);
 	memcpy(head_fail.data,&head,sizeof(head));
 	return &head_fail;
@@ -71,11 +64,10 @@ struct nrf_pack* init_completion_pack(void)
 		.d_len = 0,
 		.pack_sum = 0,
 		.type	= COMPLETION,
-		.total  = 0, 	
 	};
 	head_com.type = TYPE_DATA;
 	head_com.len  = 0;
-	head_com.num  = 0;
+	head_com.num  = CMD_COMPLETION;/*命令号*/
 	head_com.check = (~head_com.type & 0x3);
 	memcpy(head_com.data,&head,sizeof(head));
 	return &head_com;	
@@ -95,126 +87,253 @@ struct nrf_pack* get_completion_pack(void)
 }
 
 
-#if 0
+/**
+ * data_to_pack_packlen - 有效数据长度转换为包的个数 比如长度285 ->11个
+ * 
+ *
+ * Return: 返回lenght长度的数据需要打包成的包个数
+ */
 
-/*
-构造包 : 有数据
-*/
-struct pack* make_pack(u8 *buf,u32 length)
+u32 data_to_pack_packlen(u32 lenght)
+{
+	return DIV_ROUND_UP(lenght,EACH_LEN_MAX);
+}
+
+/**
+ * data_to_pack_datalen - 有效数据长度转换为加包头的数据长度
+ * 
+ *
+ * Return: 返回lenght长度的数据打包后的新长度 29->64
+ */
+
+u32 data_to_pack_datalen(u32 lenght)
+{
+	return DATALEN_TO_PACKLEN(lenght);
+}
+
+
+
+/**
+ * make_pack - 用于释放构造的包空间
+ * 
+ *
+ * Return: NULL
+ */
+
+void del_pack(struct nrf_pack* pack)
+{
+	if(pack->type == TYPE_DATA || pack->type == TYPE_REQ_DATA) 
+		free(pack);
+}
+
+
+
+/**
+ * make_pack - 用于构造数据包进行发送
+ * 
+ *
+ * Return: 返回用于发送的数据包结构
+ */
+
+struct nrf_pack* make_pack(u8 *buf,u32 length)
 {
 	int i;
-	struct pack *pack;
-	struct pack_head *head;
-	struct pack_data *data;
+	struct nrf_pack *pack;
 	u32 p_len, d_len = length;
-	static unsigned long int num = 0;
 	
 	/*设置小包的个数*/
 	p_len = DIV_ROUND_UP(d_len,EACH_LEN_MAX);
-	pack = (struct pack *)malloc(sizeof(struct pack) + sizeof(struct pack_data) * p_len);
+	pack = (struct nrf_pack *)malloc(sizeof(struct nrf_pack) * p_len);
 	if(!pack) {
 		printf("malloc is fail %d \n",__LINE__);
 		return NULL;
 	}
-
-	head = &pack->head;
-	data = pack->data;
-	
-	/*填充包头*/
-	head->head = 'h';
-	head->p_len = p_len;
-	head->d_len = d_len;
-	head->pack_sum = num++;
-	head->type = SEND;	
-	
 	
 	/*填充包身*/
 	for(i = 0; i < p_len; i++){
-		data[i].length = (d_len>EACH_LEN_MAX)?EACH_LEN_MAX:d_len;
-		data[i].cpmt = EACH_LEN_MAX - data[i].length;
-		data[i].num = i;
-		memcpy(data[i].data,buf+i*EACH_LEN_MAX,data[i].length);	
-		d_len -= data[i].length;
+		pack[i].type = TYPE_DATA;
+		pack[i].len = (d_len>EACH_LEN_MAX)?EACH_LEN_MAX:d_len;
+		pack[i].num = i;
+		pack[i].check = (~pack[i].type & 0x3);
+		memcpy(pack[i].data,buf+i*EACH_LEN_MAX,pack[i].len);	
+		d_len -= pack[i].len;
 	}
+	if(d_len!=0) cout << "warning d_len no == 0"<<endl;
+	
 	return pack;
 } 
 
 
-/*
-构造新包 : 以0填充 空包 容纳数据 length
-*/
-struct pack* make_pack(u32 length)
+/**
+ * get_pack_max_num - 用于获取包的最大下标
+ *
+ *
+ * Return: 
+ */
+
+u32 get_pack_max_num(struct nrf_pack *pack)
 {
-	struct pack *pack;
-	u32 p_len, d_len = length;
+	u32 num;
+	while(IS_CHECK_OK(pack)) 	
+		pack++;
+	pack--;
+	num = pack->num;
+	return num;
+}
+
+
+
+/**
+ * get_loss_sum - 用于获取丢失包的总数,并把丢失包写入链表
+ *
+ *
+ * Return: 
+ */
+
+u32 get_loss_sum(u32 max,struct nrf_pack *pack)
+{
+	u32 sum = 0;
 	
-	/*设置小包的个数*/
-	p_len = DIV_ROUND_UP(d_len,EACH_LEN_MAX);
-	pack = (struct pack *)malloc(sizeof(struct pack) + sizeof(struct pack_data) * p_len);
+	while(IS_CHECK_OK(pack)) {
+		for(int i = 0; i < EACH_LEN_REQ; i++) {
+			for(int j = 0; j < EACH_REQ_BIT; j++)	
+				if((pack->req[i] & (0x1<<j)) == 0)/*位 = 0*/
+				{
+					if(pack->num * EACH_LEN_LOSS + i * EACH_REQ_BIT + j <= max) {
+						sum ++;
+						write_data(pack->num * EACH_LEN_LOSS + i * EACH_REQ_BIT + j);
+					//	printf("val =%d \n",pack->num * EACH_LEN_LOSS + i * EACH_REQ_BIT + j);
+					//	printf("j = %d pack->req[i]=%d \n",j,pack->req[i]); 
+					}
+				}
+		}
+		pack++;
+	}
+	return sum;
+}
+
+
+/**
+ * make_pack - 用于构造数据进行补发
+ * @snd_pack: 第一次发送的完整包
+ * @lo_pack:  描述丢失的包 
+ * Return: 返回用于再次发送的数据包结构
+*/
+struct nrf_pack* make_pack(struct nrf_pack *snd_pack,struct nrf_pack *lo_pack)
+{
+	struct nrf_pack *pack;
+	u32 max_num =  get_pack_max_num(snd_pack); /*最大包号*/
+	u32 p_len = get_loss_sum(max_num,lo_pack); /*丢失总数*/
+	u32 loss[p_len];
+	int i = 0;
+
+	if(p_len == 0) {
+		printf("is not loss \n");
+		return NULL;
+	}
+	read_all_data(loss);
+
+	pack = (struct nrf_pack *)malloc(sizeof(struct nrf_pack) * p_len);
 	if(!pack) {
 		cout <<"malloc is fail"<<__LINE__<<endl;
 		return NULL;
 	}
-	memset(pack,0,sizeof(struct pack) + sizeof(struct pack_data) * p_len);
+
+	for(i = 0; i < p_len; i++) {
+		memcpy(&pack[i],&snd_pack[loss[i]],TRAN_LEN_MAX);
+	}
+
 	return pack;
 } 
 
 
-/*
-构造包 重发包 
-*/
-struct pack* make_pack(struct pack * new_pack)
-{
-	
-	struct pack *pack;
-	struct pack_head *head;
-	struct pack_data *data;
-	u32 p_len,d_len;
-	int i;
-	static unsigned long int num = 0;
-	
-	p_len = get_buff_loss_len(); 
-	if(p_len == 0) return NULL;
-	p_len++;/* 增加发送数据尾巴翻倍*/
-	
-	/*分配内存*/
-	pack = (struct pack *)malloc(sizeof(struct pack) + sizeof(struct pack_data) *   p_len);   
 
+/**
+ * make_pack - 用于构造请求重发包
+ *  每个包 224 bit 收到的位=1 未收到=0
+ *
+ * Return: 返回用于发送的数据包结构
+ */
+
+struct nrf_pack* make_pack(u32 length)
+{
+	struct nrf_pack *pack;
+	u32 p_len, d_len = length;
+	
+	/*设置小包的个数*/
+	p_len = DIV_ROUND_UP(d_len,EACH_LEN_MAX);/*多少个数据包*/
+	p_len = DIV_ROUND_UP(p_len,EACH_LEN_LOSS); /*需要多少个请求重发包*/
+	printf("length:%d p_len=%d \n",length,p_len);
+	pack = (struct nrf_pack *)malloc(sizeof(struct nrf_pack) * p_len);
 	if(!pack) {
-		printf("malloc is fail %d \n",__LINE__);
+		cout <<"malloc is fail"<<__LINE__<<endl;
 		return NULL;
 	}
-	head = &pack->head;
-	data = pack->data;
-	
-	/*填充包头*/
-	head->head = 'h';
-	head->p_len = p_len;
-	head->pack_sum = num++;
-	head->type = RESEND;	
-		
-	/* RESEND PACK 作为发送者使用 */
-	struct pack_data *send = new_pack->data; 
-	u32 lo_buf[p_len];
-	u32 lo_num;
-	
-	read_all_data(lo_buf);/*读出所有丢失的包*/
-	// 对最后的包进行发2次提高,降低补发总次数
-	lo_buf[p_len -1] = lo_buf[p_len -2];
-	
-	/*开始填充*/
-	head->d_len = 0;
-	for(i = 0; i < p_len ; i++){ 
-		lo_num = lo_buf[i];
-		data[i].length 	= send[lo_num].length;
-		data[i].num    	= send[lo_num].num;
-		data[i].cpmt 	= send[lo_num].cpmt;
-		memcpy(data[i].data,send[lo_num].data,send[lo_num].length);
-		head->d_len += send[lo_num].length;
+	memset(pack,0,sizeof(struct nrf_pack) * p_len);
+	for(int i = 0; i < p_len; i++){
+		pack[i].type = TYPE_REQ_DATA;
+		pack[i].len	 = EACH_LEN_REQ;
+		pack[i].num  = i;
+		pack[i].check = (~pack[i].type & 0x3);
 	}
-	
 	return pack;
 } 
+
+
+/**
+ * nrf_check_type - 检查 nrf_pack 数据的类型是否合法
+ * 
+ * Return: 校验失败 返回 TYPE_ERR,否则返回类型,或者未定义类型 TYPE_NODEFINE。
+ */
+int nrf_check_type(void *data)
+{
+	struct nrf_pack *pack = NULL;
+	pack = (typeof (pack)) data;
+	if(!IS_CHECK_OK(pack))  /*检验*/
+		return TYPE_ERR;
+	if(pack->type < TYPE_ERR) 
+		return pack->type;
+	else 
+		return TYPE_NODEFINE; /*校验正确但不存在此类型*/
+}
+
+
+/*打印包*/
+void print_nrf_pack(struct nrf_pack* pack)
+{
+	int i;
+	while(IS_CHECK_OK(pack)) {
+		printf("type:%s  len:%02d  num:%02d ==>",type_name[pack->type], pack->len, pack->num);
+		switch(pack->type) {
+		/* */
+		case TYPE_CMD:
+			printf("unknown...");
+			break;
+		case TYPE_DATA:	
+			for(i = 0; i < pack->len; i++) {
+				if(pack->data[i] != 0 )
+					printf("%c ",pack->data[i]);
+				else
+					printf("  ");
+			}	
+			break;
+		case TYPE_REQ_DATA:		
+			for(i = 0; i < pack->len; i++) {
+				printf("%08x ",pack->req[i]);
+			}
+			break;
+		}
+		printf("\n");
+		pack++;
+	}
+	printf("\n");	
+}
+
+
+
+
+#if 0
+
 
 
 /* 
@@ -338,62 +457,10 @@ static const char *pack_str[] = {
 
 
 
-/*打印包*/
-void print_pack(struct pack* pack)
-{
-	int i;
-	struct pack_head *head = &pack->head;
-	struct pack_data *data = pack->data;
-	
-	printf("head:%c  p_len:%02u  d_len:%02u  num:%02u  ",
-		head->head, head->p_len, head->d_len, head->pack_sum);
-	printf("TYPE: %s\n", pack_str[head->type]);
-	
-	switch(head->type) {
-	/* */
-	case SEND:	
-	case RESEND:	
-		while(!if_pace_true(head, data)) {
-			printf("len:%02d  num:%02d ==> ", data->length, data->num);
-			for(i = 0; i < data->length; i++) {
-				if(data->data[i] != 0 )
-					printf("%c ",data->data[i]);
-				else
-					printf("  ");
-			}
-			cout <<endl;
-			data++;
-		}
-		break;
-	case REQ_RESEND:
-		while(!if_pace_true(head, data)) {
-			printf("len:%02d  num:%02d ==> ", data->length, data->num);
-			for(i = 0; i < data->length; i++) {
-				printf("%03d ",data->req[i]);
-			}
-			cout <<endl;
-			data++;
-		}
-		break;
-	}
-	
-	printf("\n");
-	
-}
 
 
 
-void del_pack(struct pack* pack)
-{
-	if(pack->head.type == HEAD_FAIL) 
-		cout<<"fail to free HEAD_FAIL pack"<<endl;
-	else if(pack->head.type == COMPLETION)
-		cout<<"fail to free COMPLETION pack"<<endl;
-	else if(pack->head.type >= UNDEFINED) 
-		cout<<"fail to free UNDEFINED pack"<<endl;
-	else
-		free(pack);
-}
+
 
 
 enum pack_type get_pack_type(struct pack* pack)

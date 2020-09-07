@@ -14,6 +14,7 @@
 #include "list.h"
 #include "nrf24l01.h"
 #include "pack.h"
+#include "file.h"
 
 using namespace std;
 static nrf_server ops;
@@ -26,6 +27,7 @@ static u32 par[20] = {
 
 #define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
 
+#if 0
 int index_to_data(u32 index,struct nrf_cmd &cmd)
 {
 	if(index > ARRAY_SIZE(par) - 1) {
@@ -209,22 +211,76 @@ int nrf_server::nrf_transfer_cmd(struct nrf_cmd &cmd)
 	
 	return 0;
 }
+#endif
+
+static struct file *file_buff = NULL; /*文件缓存*/
+static u32 file_total = 0; /*文件总长度*/
+static u32 recv_total = 0; /*接收总长度*/
+struct nrf_pack *loss_pack = NULL;
 
 
-int nrf_up_file(void *data)
+
+/**
+ * create_up_file_buffer - 创建存储文件的缓存区,和包丢失缓冲区
+ * 
+ * Return:
+ */
+
+int create_up_file_buffer(void *data)
 {
+	int ret = FILE_PROCESS_OK;
 	struct nrf_pack *pack = NULL;
 	pack = (typeof (pack)) data;
 	struct data_head *file_desc = (struct data_head *)pack->data;
+
+	if(file_buff){
+		ret = FILE_ALRE_ALLOC_BUFF;
+		free(file_buff);
+	}
+
+	if(loss_pack){
+		ret = FILE_ALRE_ALLOC_LOSS;
+		free(loss_pack);
+	}
+
+	if(file_desc->d_len) {
+		file_buff  = (struct file *)malloc(file_desc->d_len);
+		loss_pack  = make_pack(file_desc->d_len);
+		file_total = file_desc->d_len;
+		recv_total = 0; /*总长度*/
+	}
 	
-	printf("file_desc->total =%u \n",file_desc->total);
-	printf("file_desc->pack_sum =%u \n",file_desc->pack_sum);
-	
-	
-	
-	return 0;
+	return ret;
 }
 
+
+/**
+ * send_loss_pack_to_client - 从loss_pack 筛选出含丢失包的部分返回给从机
+ * 若果没有丢失 返回完整包！！
+ * Return:
+ */
+int  send_loss_pack_to_client(void)
+{
+	struct nrf_pack *pack = loss_pack;
+	if(!pack)
+		return ERR_SND_DATA;
+	while(IS_CHECK_OK(pack)) {
+		for(int i = 0; i < EACH_LEN_REQ; i++) 
+			if(pack->req[i]!=0xffffffff) { /*只要有一个未完成*/
+				nrf24l01_tx((u8 *)pack,TRAN_LEN_MAX);
+				break;
+		   }
+			pack++;
+	}
+	return ERR_NONE;
+}
+
+
+/**
+ * nrf_cmd_handle - 对接收到的命令进行处理和回复
+ * 
+ * Return:
+ */
 
 int nrf_cmd_handle(void *data)
 {
@@ -235,13 +291,23 @@ int nrf_cmd_handle(void *data)
 	switch(cmd) {
 		
 	case CMD_SETPAR: /* 设置参数 */
+		/* 设置并回复 */
 		break;	
 	case CMD_GETPAR: /* 获取参数 */
+		/* 获取参数并回复 */
+		break;
+	case CMD_GET_LOSS: /* 获取丢包 */
+		nrf24l01_tx((u8 *)data,TRAN_LEN_MAX); /*先回复再返回丢包*/
+		send_loss_pack_to_client();
 		break;
 	case CMD_UP_FILE: /* 上传文件 */
-		
+		/* 创建文件缓存区并回复 */
+		create_up_file_buffer(data);
+		usleep(1000);
+		nrf24l01_tx((u8 *)data,TRAN_LEN_MAX);
 		break;
 	case CMD_DOWN_FILE: /* 下载文件 */	
+		/*创建文件数据并回复*/
 	
 		break;
 		
@@ -250,12 +316,82 @@ int nrf_cmd_handle(void *data)
 	return 0;
 }
 
+
+#define BIT_SET_OK  0
+#define BIT_IS_SET  1
+
+
+/**
+ * set_already_recv_bit - 对接收到的包位进行设置
+ * 
+ * Return:
+ */
+
+bool set_already_recv_bit(u32 num)
+{
+	int pack_num = num/EACH_LEN_LOSS; /*包偏移 0~223 = 0 */
+	int pack_bit_offset = num%EACH_LEN_LOSS; /*当前包的位偏移*/
+	int pack_word_offset = pack_bit_offset/32; /*第几个字*/
+	int pack_word_bit = pack_bit_offset%32; /*该字的第几个位*/
+	if(loss_pack[pack_num].req[pack_word_offset] & (0x1)<<pack_word_bit)
+		return BIT_IS_SET;
+	loss_pack[pack_num].req[pack_word_offset] |=(0x1)<<pack_word_bit;
+	return BIT_SET_OK;
+}
+
+
+
+/**
+ * nrf_data_handle - 对接收到的包进行处理
+ * 
+ * Return:
+ */
+
+int nrf_data_handle(void *data)
+{
+	struct nrf_pack *pack = NULL;
+	pack = (typeof (pack)) data;
+	u8 *dts = (u8 *)file_buff + EACH_LEN_MAX * pack->num;
+
+	if(!file_buff) 
+		return FILE_BUF_NODEFIDE; /*缓存未分配*/
+	
+	if(pack->type == TYPE_DATA) { /*次数大于总次数??*/
+		bool ret;
+		ret = set_already_recv_bit(pack->num); /*设置接收完成位*/
+		if(ret == BIT_SET_OK) {
+			memcpy(dts, pack->data, sizeof(u8) * pack->len);	
+			recv_total += pack->len;
+		}
+	}
+	else if(pack->type == TYPE_REQ_DATA) {
+		memcpy(dts, pack->data, sizeof(u32) * pack->len);
+		set_already_recv_bit(pack->num); /*设置接收完成位*/
+	}
+	else 
+		cout <<"Unidentified type packet !!"<<endl;
+	
+	return FILE_PROCESS_OK;
+}
+
+
+/**
+ * nrf_handle_pack - 对接收到的包进行处理
+ * 
+ * Return:
+ */
+
 int nrf_server::nrf_handle_pack(void *data)
 {
 	int ret = 0;
 	struct nrf_pack *pack = NULL;
 	pack = (typeof (pack)) data;
-	
+
+	ret = nrf_check_type(data);
+	if(ret >= TYPE_ERR) {
+		cout <<"nrf_check_type data is fail"<<endl;
+		return ret;
+	}
 	
 	switch(pack->type) {
 		
@@ -263,9 +399,9 @@ int nrf_server::nrf_handle_pack(void *data)
 		ret = nrf_cmd_handle(data);
 		break;
 	case TYPE_DATA:	
-		
+		ret = nrf_data_handle(data);
 		break;
-	case TYPE_DATA_HEAD:
+	case TYPE_REQ_DATA:
 	
 		break;
 	case TYPE_ERR:	
@@ -274,28 +410,86 @@ int nrf_server::nrf_handle_pack(void *data)
 	case TYPE_NODEFINE:	
 	
 		break;	
+	case TYPE_SHOW_LOSS:
+		print_nrf_pack(loss_pack);
+		printf("recv_total = %u \n",recv_total);
+		break;
 	}
 	
 	return ret;
 }
 
 
+
 /**
- * nrf_check_type - 检查接收数据的类型是否合法
+ * nrf_server_process - 服务器进程 对接收指令和数据进行处理
  * 
- * Return: 校验失败 返回 TYPE_ERR,否则返回类型,或者未定义类型 TYPE_NODEFINE。
+ * Return:
  */
-int nrf_server::nrf_check_type(void *data)
+
+int nrf_server::nrf_server_process(void *data,u32 len)
 {
+	int ret = 0;
+	int num = DIV_ROUND_UP(len,TRAN_LEN_MAX);
 	struct nrf_pack *pack = NULL;
 	pack = (typeof (pack)) data;
-	if(!IS_CHECK_OK(pack)) 
-		return TYPE_ERR;
-	if(pack->type < TYPE_ERR) 
-		return pack->type;
-	else 
-		return TYPE_NODEFINE;
+	for(int i = 0; i < num; i++ ) {
+		ret = nrf_handle_pack(&pack[i]);
+	}	
+	return ret;
 }
+
+
+
+/**
+ * recv_comp_process - 文件接收完成处理
+ * 
+ * Return:
+ */
+int nrf_server::recv_comp_process(void)
+{
+	static u32 recving = 0;
+	if(file_total == 0) return FILE_UP_NULL; /*未有文件*/
+	
+	if(recv_total < file_total) {
+		
+		float persen; /*完成百分比*/
+		if(recving == 0)
+		printf("to_len =%d  persen=      ",file_total);
+		recving = 1;
+		persen = (100.0*recv_total)/file_total;
+		printf("\b\b\b\b\b\b%5.2f%%",persen);	
+		fflush(stdout);	
+		return FILE_UP_RECVING;
+	}
+	
+	if(recv_total > file_total) 
+		return FILE_UP_FAIL;
+
+	if(recv_total == file_total) {
+		char file_name[50] = {0};
+		FILE *fp;
+		strcpy(file_name,file_buff->name);
+		fp = fopen(file_buff->name,"w+");
+		if(fp==NULL) {
+			return FILE_UP_SAVE_FAIL;
+		}
+		fwrite(file_buff->data,file_total - 50,1,fp);
+		recv_total = 0;
+		file_total = 0;
+		free(file_buff);
+		free(loss_pack);
+		file_buff = NULL;
+		loss_pack = NULL;
+		fclose(fp);
+	}
+	printf("\b\b\b\b\b\b%5.2f%%...",100.00);
+	fflush(stdout);	
+	recving = 0;
+	return FILE_UP_COMP;
+	
+}
+
 
 
 int main(int argc,char *argv[])
@@ -303,7 +497,8 @@ int main(int argc,char *argv[])
 
 	int ret;
 	nrf_server ops;
-	int index =0x100;
+	int index = 0x100;
+	u8 recv[(ONE_PROCESS_NUM + 1)*TRAN_LEN_MAX] = {0}; /*多一个空保留空间*/
 	
 	struct ctl_data cur = {
 		{0x01,0x02,0x03,0x04,0x05},//目的地址
@@ -311,26 +506,28 @@ int main(int argc,char *argv[])
 		24, 
 		CRC_MODE_16,
 	};
-	
-	struct nrf_cmd rec;
-	memset(&rec,0,32);
-	pack_module_init(); //初始化链式缓存
+		
 	ret = nrf24l01_init(cur);
 	if(ret){
 		cout <<"nrf24l01 init fail"<<endl;
 		return -1;
 	}
-
-	while(nrf24l01_rx((u8 *)&rec,32)>0); //清空缓存
-	if(sizeof(struct nrf_cmd ) >= 32)
-		cout <<"warning sizeof cmd = " <<sizeof(struct nrf_cmd )<<endl;
+	
+	pack_module_init(); //初始化链式缓存
+	
+	while(nrf24l01_rx((u8 *)&recv,32)>0); //清空缓存
+	
+	if(sizeof(struct nrf_pack ) != 32)
+		cout <<"warning sizeof cmd = " <<sizeof(struct nrf_pack )<<endl;
 	
 	while(1){
 		ret = 0;
 		while(ret == 0) {
-			ret = nrf24l01_rx((u8 *)&rec,32);
+			memset(recv,0,sizeof(recv));
+			ret = nrf24l01_rx((u8 *)recv,sizeof(recv) - TRAN_LEN_MAX);
 		}
-		ops.nrf_transfer_cmd(rec);
+		ops.nrf_server_process(recv,ret);
+		ops.recv_comp_process();
 	}
 
 	return 0;
