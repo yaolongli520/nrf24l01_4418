@@ -21,7 +21,7 @@ public:
 	int recv_comp_process(void);
 	int nrf_server_process(void *data,u32 len);
 	int nrf_handle_pack(void *data); /* 处理包 */
-	int nrf_transfer_setpar(struct nrf_cmd &cmd);
+//	int nrf_transfer_setpar(struct nrf_cmd &cmd);
 //	int nrf_transfer_getpar(struct nrf_cmd &cmd);
 	int nrf_transfer_file(struct nrf_cmd &cmd);
 	int nrf_transfer_cmd(struct nrf_cmd &cmd);

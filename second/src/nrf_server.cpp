@@ -41,13 +41,7 @@ int index_to_data(u32 index,u8 *data)
 
 
 #if 0
-int nrf_server::nrf_transfer_setpar(struct nrf_cmd &cmd)
-{
-	u32 index;
-	index = cmd.index;
-	par[index] = cmd.data32[0];
-	return 0;
-}
+
 
 
 int nrf_server::nrf_read_cmd(void *cmd,long int timeout)
@@ -198,7 +192,11 @@ int nrf_server::nrf_transfer_cmd(struct nrf_cmd &cmd)
 static struct file *file_buff = NULL; /*文件缓存*/
 static u32 file_total = 0; /*文件总长度*/
 static u32 recv_total = 0; /*接收总长度*/
-struct nrf_pack *loss_pack = NULL;
+struct nrf_pack *loss_pack = NULL; /*记录丢包*/
+struct nrf_pack *loss_pack_off = NULL; /*记录完成偏移*/
+struct timespec str_time; /*传输开始*/
+struct timespec end_time; /*传输结束*/
+
 
 
 
@@ -230,6 +228,7 @@ int create_up_file_buffer(void *data)
 		loss_pack  = make_pack(file_desc->d_len);
 		file_total = file_desc->d_len;
 		recv_total = 0; /*总长度*/
+		clock_gettime(CLOCK_REALTIME, &str_time);	
 	}
 	
 	return ret;
@@ -243,17 +242,27 @@ int create_up_file_buffer(void *data)
  */
 int  send_loss_pack_to_client(void)
 {
-	struct nrf_pack *pack = loss_pack;
+	int sum = 0;
+	struct nrf_pack *pack;
+	if(loss_pack_off) 
+		pack = loss_pack_off; /*如果有则从这个位置开始*/
+	else
+		pack = loss_pack; /*重来开始*/
+	
 	if(!pack)
 		return ERR_SND_DATA;
-	while(IS_CHECK_OK(pack)) {
+	while(IS_CHECK_OK(pack) && (sum<16)) {
 		for(int i = 0; i < EACH_LEN_REQ; i++) 
-			if(pack->req[i]!=0xffffffff) { /*只要有一个未完成*/
+			if(pack->req[i]!=0xffffffff) { /*只要有一个未完成*/	
+				if(sum == 0)  /*这里开始发现丢包 记录这个开始位置*/
+					loss_pack_off = pack; 
 				nrf24l01_tx((u8 *)pack,TRAN_LEN_MAX);
+				sum++; /*回复计数*/
 				break;
 		   }
-			pack++;
+			pack++;	
 	}
+	
 	return ERR_NONE;
 }
 
@@ -287,6 +296,24 @@ int nrf_transfer_getpar(void *data)
 	return 0;
 }
 
+int nrf_transfer_setpar(void *data)
+{
+	int	ret;
+	u32 val = 0;
+	struct nrf_pack *pack = NULL;
+	pack = (typeof (pack)) data;
+	struct get_par_str *cur_par = (struct get_par_str *)pack->data;
+	int index = cur_par->index;
+	
+	memcpy(&val,cur_par->data,sizeof(val));
+	if(index < ARRAY_SIZE(par))
+		par[index] = val;
+	else
+		memset(cur_par->data,0xff,sizeof(val));
+	return 0;
+}
+
+
 
 /**
  * nrf_cmd_handle - 对接收到的命令进行处理和回复
@@ -303,6 +330,8 @@ int nrf_cmd_handle(void *data)
 	switch(cmd) {
 		
 	case CMD_SETPAR: /* 设置参数 */
+		nrf_transfer_setpar(data);
+		nrf24l01_tx((u8 *)data,TRAN_LEN_MAX);
 		/* 设置并回复 */
 		break;	
 	case CMD_GETPAR: /* 获取参数 */
@@ -410,8 +439,8 @@ int nrf_server::nrf_handle_pack(void *data)
 
 	ret = nrf_check_type(data);
 	if(ret >= TYPE_ERR) {
-		cout <<"nrf_check_type data is fail"<<endl;
-		print_err(pack);
+	//	cout <<"nrf_check_type data is fail"<<endl;
+	//	print_err(pack);
 		return ret;
 	}
 	
@@ -471,17 +500,20 @@ int nrf_server::nrf_server_process(void *data,u32 len)
 int nrf_server::recv_comp_process(void)
 {
 	static u32 recving = 0;
-	if(file_total == 0) return FILE_UP_NULL; /*未有文件*/
+	if(file_total == 0) 
+		return FILE_UP_NULL; /*未有文件*/
 	
 	if(recv_total < file_total) {
 		
 		float persen; /*完成百分比*/
 		if(recving == 0)
-		printf("to_len =%d  persen=      ",file_total);
+		printf("to_len =%d  persen=       ",file_total);
 		recving = 1;
 		persen = (100.0*recv_total)/file_total;
-		printf("\b\b\b\b\b\b%5.2f%%",persen);	
+		if(persen >= 99.99) persen = 99.99; //防止非常接近100
+		printf("\b\b\b\b\b\b%5.2f%%",persen); 	
 		fflush(stdout);	
+		
 		return FILE_UP_RECVING;
 	}
 	
@@ -503,10 +535,15 @@ int nrf_server::recv_comp_process(void)
 		free(loss_pack);
 		file_buff = NULL;
 		loss_pack = NULL;
+		loss_pack_off = NULL; /*恢复*/
 		fclose(fp);
 	}
-	printf("\b\b\b\b\b\b%5.2f%%...\n",100.00);
+	printf("\b\b\b\b\b\b\b%6.2f%%......",100.00);
 	fflush(stdout);	
+	clock_gettime(CLOCK_REALTIME, &end_time);	
+	struct timespec time = get_time_offset(str_time,end_time);
+	printf(" %u.%u s \n",time.tv_sec,time.tv_nsec/1000000);
+	
 	recving = 0;
 	return FILE_UP_COMP;
 	
@@ -538,7 +575,7 @@ int main(int argc,char *argv[])
 	pack_module_init(); //初始化链式缓存
 	
 	while(nrf24l01_rx((u8 *)&recv,32)>0); //清空缓存
-	
+	cout <<"server start"<<endl;
 	if(sizeof(struct nrf_pack ) != 32)
 		cout <<"warning sizeof cmd = " <<sizeof(struct nrf_pack )<<endl;
 	

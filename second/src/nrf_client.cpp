@@ -347,6 +347,8 @@ int nrf_cli_get_req(struct nrf_pack **loss)
 
 
 
+
+
 /**
  * client_up_file - 客户端上传文件到服务器
  * 
@@ -533,6 +535,40 @@ int get_par_test(u32 index)
 }
 
 
+
+/**
+ * set_par_test - 设置服务器的参数
+ * 
+ * Return:
+ */
+
+int set_par_test(u32 index,u32 val)
+{
+	int ret = 0;
+	u32 r_val = 0;
+	struct nrf_pack pack;
+	struct get_par_str *cur_par = (struct get_par_str *)pack.data;
+
+	pack.type = TYPE_CMD;
+	pack.len  = 0;
+	pack.num  = CMD_SETPAR;
+	pack.check = (~pack.type & 0x3);
+
+	cur_par->index = index;
+	memcpy(cur_par->data,&val,sizeof(val));
+
+	ret = nrf_snd_cmd(&pack);
+	if(ret) {
+		cout <<"get par "<<index <<"fail"<<endl;
+		return ret;
+	}
+	memcpy(&r_val,cur_par->data,sizeof(r_val));
+	if(r_val != val) return -1;
+	
+	return 0;
+}
+
+
 int main(int argc,char *argv[])
 {
 	int ret;
@@ -562,7 +598,12 @@ int main(int argc,char *argv[])
 		get_par_test(atoi(argv[2]));
 	}
 	else if(!strcmp(argv[1],"set")){
-	//	set_par_test(argv);
+		int is_set;
+		is_set = set_par_test(atoi(argv[2]),atoi(argv[3]));
+		if(!is_set) 
+			cout <<"set ok"<<endl;
+		else
+			cout <<"set fail"<<endl;
 	}
 	else if(!strcmp(argv[1],"up")){
 		cout << "up file: " <<argv[2]<<endl;
