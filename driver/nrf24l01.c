@@ -335,19 +335,7 @@ void transfer_work_func(struct work_struct *work)
 {
 	int len; //长度
 	int residue; //剩余
-	u8 *xmit;
-	
-	
-	xmit = kzalloc(1024,GFP_KERNEL);
-	
-	#if 0
-	unsigned long int cur = jiffies;
-	while(drv_date->w_flag == 1 )
-	{
-		if(time_after_eq(jiffies,cur+msecs_to_jiffies(5)))
-			break;
-	}
-	#endif
+	u8 xmit[1024] = {0};	
 	
 	while(1)
 	{
@@ -367,15 +355,14 @@ void transfer_work_func(struct work_struct *work)
 		{
 			_nrf24l01_xmit(xmit,len); //提交到发送
 			if(!nrf24l01_circ_chars_pending(&drv_date->tx_buf)) break;//没有剩下
-			msleep(50); //进入睡眠 打开定时器
+		//	msleep(50); //进入睡眠 打开定时器
 		}
 	}
 	if(drv_date->w_flag == 1 ) 
 		pr_emerg("\n warning %s drv_date->w_flag =1 \n",__func__);
 	drv_date->w_flag = 1;
 	wake_up_interruptible(&drv_date->wq);
-	kfree(xmit);
-	
+
 }
 
 /*中断下半部 工作函数*/
@@ -387,18 +374,21 @@ void nrf24l01_work_func(struct work_struct *work)
 	if(sta&RX_OK)  //接收成功
 	{
 		int unread,capacity;
-		int residue;
-		u8 buf[32];
+		int residue = 0;
+		u8 buf[32] = {0};
 		ret = NRF24L01_RxPacket(buf); //读取到buf
 		NRF24L01_Write_Reg(NRF_WRITE_REG+STATUS,sta);//清除状态
-		if(ret == 1) pr_emerg("%d is no read date\n",__LINE__);
+		//if(ret == 1) pr_emerg("%d is no read date\n",__LINE__);
 		spin_lock(&drv_date->circ_rx_lock); //保证接收缓存区互斥访问
-		residue = circ_buf_write(&drv_date->rx_buf,buf,32); //把接收数据放入接收缓冲区
+		if(ret == 0)
+			residue = circ_buf_write(&drv_date->rx_buf,buf,32); //把接收数据放入接收缓冲区
 		spin_unlock(&drv_date->circ_rx_lock);
 		unread = nrf24l01_circ_chars_pending(&drv_date->rx_buf); //占用的空间
 		capacity = nrf24l01_circ_chars_free(&drv_date->rx_buf); //剩余空间
-		if(!residue) dev_debug("is rx ok unread:%d capacity:%d\n",unread,capacity);
-		else pr_emerg("rx_buf was full\n");
+		if((ret == 0)&& (!residue)) 
+			dev_debug("is rx ok unread:%d capacity:%d\n",unread,capacity);
+		else 
+			pr_emerg("rx_buf was full\n");
 	}
 	else if(sta & MAX_TX)
 	{
